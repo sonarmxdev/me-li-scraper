@@ -67,14 +67,15 @@ app.post('/scrape/product-info', async (req, res) => {
     }
 
     try {
-        const preloadedState = await scrapeMercadoLibreWithJSON(url);
+        const preloadedState = await scrapeMercadoLibreWithJSON(url, true);
         
-        if (preloadedState) {
-            const productInfo = extractProductInfo(preloadedState);
+        if (preloadedState.preloadedState) {
+            const productInfo = extractProductInfo(preloadedState.preloadedState);
             
             res.json({
                 success: true,
                 data: productInfo,
+                screenshot: preloadedState.screenshot,
                 message: 'Información del producto obtenida exitosamente'
             });
         } else {
@@ -95,7 +96,7 @@ app.post('/scrape/product-info', async (req, res) => {
 // Función auxiliar para esperar
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function scrapeMercadoLibreWithJSON(url) {
+async function scrapeMercadoLibreWithJSON(url, takeScreenshot = false) {
     console.log('🚀 Iniciando scraping con extracción de JSON...');
     
     const browser = await puppeteer.launch({ 
@@ -140,6 +141,18 @@ async function scrapeMercadoLibreWithJSON(url) {
             waitUntil: 'domcontentloaded',
             timeout: 60000 
         });
+
+        let screenshotBase64 = null;
+        if (takeScreenshot) {
+            console.log('📸 Tomando captura de pantalla...');
+            // encoding: 'base64' evita guardar archivo en disco
+            screenshotBase64 = await page.screenshot({
+                fullPage: true, // Captura toda la página (scroll hasta abajo)
+                encoding: 'base64',
+                type: 'jpeg',   // JPEG es más ligero que PNG
+                quality: 60     // Calidad 60 para ahorrar ancho de banda
+            });
+        }
         
         console.log('✅ Página cargada');
         
@@ -163,11 +176,20 @@ async function scrapeMercadoLibreWithJSON(url) {
         
         if (preloadedState) {
             console.log('✅ JSON __PRELOADED_STATE__ encontrado');
-            return preloadedState;
+            
+            return {
+                preloadedState: preloadedState, // Tu resultado actual
+                screenshot: screenshotBase64 // Nuevo campo
+            };
+            // return preloadedState;
         } else {
             console.log('❌ No se encontró el script __PRELOADED_STATE__');
             // Intentar extraer datos de otra forma
-            return await extractDataFromPage(page);
+            return {
+                preloadedState: await extractDataFromPage(page), // Tu resultado actual
+                screenshot: screenshotBase64 // Nuevo campo
+            };
+            // return await extractDataFromPage(page);
         }
         
     } catch (error) {
